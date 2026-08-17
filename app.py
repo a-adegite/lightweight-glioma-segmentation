@@ -13,9 +13,10 @@ import numpy as np
 import streamlit as st
 import tensorflow as tf
 
-from tensorflow.keras.models import load_model
-from matplotlib import pyplot as plt
 from scipy.ndimage import zoom
+from matplotlib import pyplot as plt
+from tensorflow.keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
 
 # Force CPU-only operation to avoid CUDA errors
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
