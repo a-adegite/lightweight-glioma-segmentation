@@ -271,7 +271,8 @@ def main():
     uploaded_files = st.file_uploader(
         "Upload MRI scans (NIfTI format)",
         type=['nii', 'nii.gz'],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="mri_uploader"
     )
 
     # Clear uploaded files
