@@ -149,6 +149,22 @@ def prepare_input(modalities):
     
     original_shape = combined.shape
     
+    # Resize to model's expected input shape (96, 96, 96, 4)
+    # Using interpolation for CPU compatibility
+    zoom_factors = (
+        TARGET_SHAPE[0] / combined.shape[0],
+        TARGET_SHAPE[1] / combined.shape[1],
+        TARGET_SHAPE[2] / combined.shape[2],
+        1
+    )
+    
+    input_data = zoom(
+        combined,
+        zoom_factors,
+        order=1
+    )
+    
+    return input_data, original_shape, combined
     # Then resize to model's expected input shape (64, 64, 64, 4)
     # Using simple downsampling for CPU compatibility
     downsampled = combined[::2, ::2, ::2, :]
