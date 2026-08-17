@@ -1,15 +1,20 @@
-import streamlit as st
+import os
+
+# Force CPU before importing Tensorflow
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+# Imports
+import tempfile
+import time
+
+import gdown
 import nibabel as nib
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-import os
-import tempfile
+import streamlit as st
+import tensorflow as tf
+
 from tensorflow.keras.models import load_model
 from matplotlib import pyplot as plt
-import time
-import gdown
-from pathlib import Path
-import tensorflow as tf
 from scipy.ndimage import zoom
 
 # Force CPU-only operation to avoid CUDA errors
@@ -33,7 +38,9 @@ MODEL_PATH = os.path.join(
 # Model expects (96, 96, 96, 4) input
 TARGET_SHAPE = (96, 96, 96, 4)
 
+# Ensure model directory exists
 os.makedirs(MODEL_DIR, exist_ok=True)
+
 
 # Download model from Google Drive (cache this to avoid repeated downloads)
 @st.cache_resource
@@ -41,9 +48,14 @@ def download_and_load_model():
     # Check if model already exists
     if not os.path.exists(MODEL_PATH):
         st.info("Downloading model from Google Drive... (This may take a few minutes)")
+        
         try:
-            # Download using gdown
-            gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+            # Download using Google Drive file ID
+            gdown.download(
+                id=MODEL_ID,
+                output=MODEL_PATH,
+                quiet=False
+            )
             
             # Verify download
             if not os.path.exists(MODEL_PATH):
@@ -60,9 +72,11 @@ def download_and_load_model():
         
         model = load_model(MODEL_PATH, compile=False)
         return model
+        
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None
+
 
 # Function to process uploaded files
 def process_uploaded_files(uploaded_files):
@@ -82,22 +96,29 @@ def process_uploaded_files(uploaded_files):
             img_data = img.get_fdata()
             
             # Scale the data
-            img_data = scaler.fit_transform(img_data.reshape(-1, img_data.shape[-1])).reshape(img_data.shape)
+            img_data = scaler.fit_transform(
+                img_data.reshape(-1, img_data.shape[-1])
+            ).reshape(img_data.shape)
             
             # Determine modality
             if 't1n' in file_name:
                 modalities['t1n'] = img_data
+                
             elif 't1c' in file_name:
                 modalities['t1c'] = img_data
+                
             elif 't2f' in file_name:
                 modalities['t2f'] = img_data
+                
             elif 't2w' in file_name:
                 modalities['t2w'] = img_data
+                
             elif 'seg' in file_name:
                 modalities['mask'] = img_data.astype(np.uint8)
                 
         except Exception as e:
             st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
+            
         finally:
             # Clean up temporary file
             if os.path.exists(tmp_path):
@@ -105,12 +126,14 @@ def process_uploaded_files(uploaded_files):
     
     return modalities
 
+
 # Function to prepare input for model
 def prepare_input(modalities):
     # Check we have all required modalities
     required = ['t1n', 't1c', 't2f', 't2w']
+    
     if not all(m in modalities for m in required):
-        return None, None
+        return None, None, None
     
     # Combine modalities
     combined = np.stack([
@@ -122,6 +145,7 @@ def prepare_input(modalities):
     
     # First crop to original expected size (128, 128, 128, 4)
     combined = combined[56:184, 56:184, 13:141, :]
+    
     original_shape = combined.shape
     
     # Then resize to model's expected input shape (64, 64, 64, 4)
@@ -130,6 +154,7 @@ def prepare_input(modalities):
     
     return downsampled, original_shape, combined
 
+
 # Function to make prediction
 def make_prediction(model, input_data):
     # Add batch dimension
@@ -137,9 +162,11 @@ def make_prediction(model, input_data):
     
     # Make prediction
     prediction = model.predict(input_data, verbose=0)
+    
     prediction_argmax = np.argmax(prediction, axis=4)[0, :, :, :]
     
     return prediction_argmax
+
 
 # Function to upsample prediction to original size
 def upsample_prediction(prediction, target_shape):
@@ -149,7 +176,13 @@ def upsample_prediction(prediction, target_shape):
         target_shape[1] / prediction.shape[1],
         target_shape[2] / prediction.shape[2]
     )
-    return zoom(prediction, zoom_factors, order=0)  # order=0 for nearest-neighbor
+    
+    return zoom(
+        prediction,
+        zoom_factors,
+        order=0
+    )  # order=0 for nearest-neighbor
+
 
 # Function to visualize results
 def visualize_results(original_data, prediction, ground_truth=None):
@@ -160,8 +193,11 @@ def visualize_results(original_data, prediction, ground_truth=None):
     slice_indices = [50, 75, 90]
     
     # Create figure
-    fig, axes = plt.subplots(3, 3 if ground_truth is not None else 2, 
-                            figsize=(10, 6))
+    fig, axes = plt.subplots(
+        3,
+        3 if ground_truth is not None else 2,
+        figsize=(10, 6)
+    )
     
     for i, slice_idx in enumerate(slice_indices):
         # Rotate images for better visualization
@@ -186,7 +222,9 @@ def visualize_results(original_data, prediction, ground_truth=None):
             axes[i, 2].axis('off')
     
     plt.tight_layout()
+    
     return fig
+
 
 # Main app
 def main():
@@ -221,7 +259,9 @@ def main():
     
     if uploaded_files and len(uploaded_files) >= 4:
         if st.button("Process and Predict"):
+            
             with st.spinner("Processing files..."):
+                
                 # Process uploaded files
                 modalities = process_uploaded_files(uploaded_files)
                 
@@ -229,42 +269,74 @@ def main():
                 input_data, original_shape, original_data = prepare_input(modalities)
                 
                 if input_data is None:
-                    st.error("Could not prepare input data. Please ensure you've uploaded all required modalities.")
+                    st.error(
+                        "Could not prepare input data. "
+                        "Please ensure you've uploaded all required modalities."
+                    )
                     return
                 
                 # Get ground truth if available
                 ground_truth = modalities.get('mask', None)
+                
                 if ground_truth is not None:
                     ground_truth = ground_truth[56:184, 56:184, 13:141]
-                    ground_truth[ground_truth == 4] = 3  # Reassign label 4 to 3
+                    ground_truth[ground_truth == 4] = 3
                 
                 # Make prediction
-                with st.spinner("Making prediction (this may take a few minutes on CPU)..."):
+                with st.spinner(
+                    "Making prediction (this may take a few minutes on CPU)..."
+                ):
                     start_time = time.time()
-                    prediction = make_prediction(model, input_data)
+                    
+                    prediction = make_prediction(
+                        model,
+                        input_data
+                    )
                     
                     # Upsample prediction to original size
-                    prediction = upsample_prediction(prediction, original_shape[:3])
+                    prediction = upsample_prediction(
+                        prediction,
+                        original_shape[:3]
+                    )
                     
                     # Convert prediction to int32 for NIfTI compatibility
                     prediction = prediction.astype(np.int32)
                     
                     elapsed_time = time.time() - start_time
                 
-                st.success(f"Prediction completed in {elapsed_time:.2f} seconds")
+                st.success(
+                    f"Prediction completed in {elapsed_time:.2f} seconds"
+                )
                 
                 # Visualize results using original size data
-                fig = visualize_results(original_data, prediction, ground_truth)
+                fig = visualize_results(
+                    original_data,
+                    prediction,
+                    ground_truth
+                )
+                
                 st.pyplot(fig)
                 
                 # Provide download option for prediction
                 st.subheader("Download Prediction")
                 
                 # Create a temporary NIfTI file for download
-                with tempfile.NamedTemporaryFile(suffix='.nii.gz', delete=False) as tmp_file:
+                with tempfile.NamedTemporaryFile(
+                    suffix='.nii.gz',
+                    delete=False
+                ) as tmp_file:
+                    
                     # Convert prediction to NIfTI with explicit dtype
-                    pred_img = nib.Nifti1Image(prediction, affine=np.eye(4), dtype=np.int32)
-                    nib.save(pred_img, tmp_file.name)
+                    pred_img = nib.Nifti1Image(
+                        prediction,
+                        affine=np.eye(4),
+                        dtype=np.int32
+                    )
+                    
+                    nib.save(
+                        pred_img,
+                        tmp_file.name
+                    )
                     
                     # Read back the file data
                     with open(tmp_file.name, 'rb') as f:
@@ -279,8 +351,12 @@ def main():
                     file_name="glioma_segmentation.nii.gz",
                     mime="application/octet-stream"
                 )
+    
     elif uploaded_files and len(uploaded_files) < 4:
-        st.warning("Please upload all four modalities (T1n, T1c, T2f, T2w)")
+        st.warning(
+            "Please upload all four modalities (T1n, T1c, T2f, T2w)"
+        )
+
 
 if __name__ == "__main__":
     main()
