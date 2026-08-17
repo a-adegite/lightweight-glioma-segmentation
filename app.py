@@ -273,6 +273,11 @@ def main():
         type=['nii', 'nii.gz'],
         accept_multiple_files=True
     )
+
+    # Clear uploaded files
+    if st.button("Clear Uploaded Files"):
+        st.session_state["mri_uploader"] = None
+        st.rerun()
     
     if uploaded_files and len(uploaded_files) >= 4:
         if st.button("Process and Predict"):
