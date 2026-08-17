@@ -18,14 +18,10 @@ from matplotlib import pyplot as plt
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 
-# Force CPU-only operation to avoid CUDA errors
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 # Set page config
 st.set_page_config(page_title="Glioma Segmentation", layout="wide")
 
-# Initialize scaler
-scaler = MinMaxScaler()
 
 # Model configuration
 MODEL_ID = "1dfbuaM9S39alRUij30EC6ws1jx69Wi0e"
@@ -48,7 +44,10 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 def download_and_load_model():
     # Check if model already exists
     if not os.path.exists(MODEL_PATH):
-        st.info("Downloading model from Google Drive... (This may take a few minutes)")
+        st.info(
+            "Downloading model from Google Drive... "
+            "(This may take a few minutes)"
+        )
         
         try:
             # Download using Google Drive file ID
@@ -71,7 +70,11 @@ def download_and_load_model():
         # Disable TensorFlow logging
         tf.get_logger().setLevel('ERROR')
         
-        model = load_model(MODEL_PATH, compile=False)
+        model = load_model(
+            MODEL_PATH,
+            compile=False
+        )
+        
         return model
         
     except Exception as e:
@@ -83,12 +86,22 @@ def download_and_load_model():
 def process_uploaded_files(uploaded_files):
     modalities = {}
     
+    # Initialize scaler
+    scaler = MinMaxScaler()
+    
     for uploaded_file in uploaded_files:
         file_name = uploaded_file.name.lower()
         
         # Save to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.nii.gz') as tmp_file:
-            tmp_file.write(uploaded_file.getbuffer())
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix='.nii.gz'
+        ) as tmp_file:
+            
+            tmp_file.write(
+                uploaded_file.getbuffer()
+            )
+            
             tmp_path = tmp_file.name
         
         try:
@@ -118,7 +131,10 @@ def process_uploaded_files(uploaded_files):
                 modalities['mask'] = img_data.astype(np.uint8)
                 
         except Exception as e:
-            st.error(f"Error processing file {uploaded_file.name}: {str(e)}")
+            st.error(
+                f"Error processing file "
+                f"{uploaded_file.name}: {str(e)}"
+            )
             
         finally:
             # Clean up temporary file
@@ -145,7 +161,12 @@ def prepare_input(modalities):
     ], axis=3)
     
     # First crop to original expected size (128, 128, 128, 4)
-    combined = combined[56:184, 56:184, 13:141, :]
+    combined = combined[
+        56:184,
+        56:184,
+        13:141,
+        :
+    ]
     
     original_shape = combined.shape
     
@@ -164,23 +185,30 @@ def prepare_input(modalities):
         order=1
     )
     
-    return input_data, original_shape, combined
-    # Then resize to model's expected input shape (64, 64, 64, 4)
-    # Using simple downsampling for CPU compatibility
-    downsampled = combined[::2, ::2, ::2, :]
+    # Ensure the input shape matches the model's expected shape
+    input_data = input_data.astype(np.float32)
     
-    return downsampled, original_shape, combined
+    return input_data, original_shape, combined
 
 
 # Function to make prediction
 def make_prediction(model, input_data):
     # Add batch dimension
-    input_data = np.expand_dims(input_data, axis=0)
+    input_data = np.expand_dims(
+        input_data,
+        axis=0
+    )
     
     # Make prediction
-    prediction = model.predict(input_data, verbose=0)
+    prediction = model.predict(
+        input_data,
+        verbose=0
+    )
     
-    prediction_argmax = np.argmax(prediction, axis=4)[0, :, :, :]
+    prediction_argmax = np.argmax(
+        prediction,
+        axis=4
+    )[0, :, :, :]
     
     return prediction_argmax
 
@@ -202,9 +230,15 @@ def upsample_prediction(prediction, target_shape):
 
 
 # Function to visualize results
-def visualize_results(original_data, prediction, ground_truth=None):
+def visualize_results(
+    original_data,
+    prediction,
+    ground_truth=None
+):
     # Select a modality to display (using T1c here)
-    image_data = original_data[:, :, :, 1]  # T1c is the second channel
+    image_data = original_data[
+        :, :, :, 1
+    ]  # T1c is the second channel
     
     # Select some slices to display
     slice_indices = [50, 75, 90]
@@ -217,25 +251,56 @@ def visualize_results(original_data, prediction, ground_truth=None):
     )
     
     for i, slice_idx in enumerate(slice_indices):
+        # Make sure slice is within range
+        if slice_idx >= image_data.shape[2]:
+            slice_idx = image_data.shape[2] - 1
+        
         # Rotate images for better visualization
-        img_slice = np.rot90(image_data[:, :, slice_idx])
-        pred_slice = np.rot90(prediction[:, :, slice_idx])
+        img_slice = np.rot90(
+            image_data[:, :, slice_idx]
+        )
+        
+        pred_slice = np.rot90(
+            prediction[:, :, slice_idx]
+        )
         
         # Plot input image
-        axes[i, 0].imshow(img_slice, cmap='gray')
-        axes[i, 0].set_title(f'Input Image - Slice {slice_idx}')
+        axes[i, 0].imshow(
+            img_slice,
+            cmap='gray'
+        )
+        
+        axes[i, 0].set_title(
+            f'Input Image - Slice {slice_idx}'
+        )
+        
         axes[i, 0].axis('off')
         
         # Plot prediction
-        axes[i, 1].imshow(pred_slice)
-        axes[i, 1].set_title(f'Prediction - Slice {slice_idx}')
+        axes[i, 1].imshow(
+            pred_slice
+        )
+        
+        axes[i, 1].set_title(
+            f'Prediction - Slice {slice_idx}'
+        )
+        
         axes[i, 1].axis('off')
         
         # Plot ground truth if available
         if ground_truth is not None:
-            gt_slice = np.rot90(ground_truth[:, :, slice_idx])
-            axes[i, 2].imshow(gt_slice)
-            axes[i, 2].set_title(f'Ground Truth - Slice {slice_idx}')
+            gt_slice = np.rot90(
+                ground_truth[:, :, slice_idx]
+            )
+            
+            axes[i, 2].imshow(
+                gt_slice
+            )
+            
+            axes[i, 2].set_title(
+                f'Ground Truth - Slice {slice_idx}'
+            )
+            
             axes[i, 2].axis('off')
     
     plt.tight_layout()
@@ -245,8 +310,14 @@ def visualize_results(original_data, prediction, ground_truth=None):
 
 # Main app
 def main():
-    st.title("3D Glioma Segmentation with U-Net")
-    st.write("Upload MRI scans in NIfTI format for glioma segmentation")
+    st.title(
+        "3D Glioma Segmentation with U-Net"
+    )
+    
+    st.write(
+        "Upload MRI scans in NIfTI format "
+        "for glioma segmentation"
+    )
     
     with st.expander("How to use this app"):
         st.markdown("""
@@ -254,6 +325,7 @@ def main():
         2. Optionally upload a segmentation mask for comparison (must contain 'seg' in filename)
         3. Click 'Process and Predict' button
         4. View the segmentation results
+        5. Download the predicted segmentation as a NIfTI file
         
         **Note:** 
         - The first run will download the model (~100MB) which may take a few minutes.
@@ -264,51 +336,114 @@ def main():
     model = download_and_load_model()
     
     if model is None:
-        st.error("Failed to load model. Please check the error message above.")
+        st.error(
+            "Failed to load model. "
+            "Please check the error message above."
+        )
         return
+    
+    # Initialize uploader key
+    if "uploader_key" not in st.session_state:
+        st.session_state["uploader_key"] = 0
     
     # File uploader
     uploaded_files = st.file_uploader(
         "Upload MRI scans (NIfTI format)",
         type=['nii', 'nii.gz'],
         accept_multiple_files=True,
-        key="mri_uploader"
+        key=f"mri_uploader_{st.session_state['uploader_key']}"
     )
-
+    
+    # Create buttons
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        process_button = st.button(
+            "Process and Predict"
+        )
+    
+    with col2:
+        clear_button = st.button(
+            "Clear Uploaded Files"
+        )
+    
     # Clear uploaded files
-    if st.button("Clear Uploaded Files"):
-        st.session_state["mri_uploader"] = None
+    if clear_button:
+        st.session_state["uploader_key"] += 1
         st.rerun()
     
+    # Check uploaded files
     if uploaded_files and len(uploaded_files) >= 4:
-        if st.button("Process and Predict"):
+        
+        if process_button:
             
-            with st.spinner("Processing files..."):
+            with st.spinner(
+                "Processing files..."
+            ):
                 
                 # Process uploaded files
-                modalities = process_uploaded_files(uploaded_files)
+                modalities = process_uploaded_files(
+                    uploaded_files
+                )
                 
-                # Prepare input (returns downsampled, original shape, and original data)
-                input_data, original_shape, original_data = prepare_input(modalities)
+                # Prepare input
+                input_data, original_shape, original_data = prepare_input(
+                    modalities
+                )
                 
                 if input_data is None:
                     st.error(
                         "Could not prepare input data. "
-                        "Please ensure you've uploaded all required modalities."
+                        "Please ensure you've uploaded all "
+                        "required modalities."
+                    )
+                    return
+                
+                # Check model input shape
+                expected_model_shape = model.input_shape
+                
+                actual_input_shape = (
+                    1,
+                    input_data.shape[0],
+                    input_data.shape[1],
+                    input_data.shape[2],
+                    input_data.shape[3]
+                )
+                
+                # Check input dimensions
+                if actual_input_shape[1:] != expected_model_shape[1:]:
+                    st.error(
+                        f"Input shape mismatch. "
+                        f"The model expects "
+                        f"{expected_model_shape}, "
+                        f"but the uploaded data has shape "
+                        f"{actual_input_shape}."
                     )
                     return
                 
                 # Get ground truth if available
-                ground_truth = modalities.get('mask', None)
+                ground_truth = modalities.get(
+                    'mask',
+                    None
+                )
                 
                 if ground_truth is not None:
-                    ground_truth = ground_truth[56:184, 56:184, 13:141]
-                    ground_truth[ground_truth == 4] = 3
+                    ground_truth = ground_truth[
+                        56:184,
+                        56:184,
+                        13:141
+                    ]
+                    
+                    ground_truth[
+                        ground_truth == 4
+                    ] = 3
                 
                 # Make prediction
                 with st.spinner(
-                    "Making prediction (this may take a few minutes on CPU)..."
+                    "Making prediction "
+                    "(this may take a few minutes on CPU)..."
                 ):
+                    
                     start_time = time.time()
                     
                     prediction = make_prediction(
@@ -323,12 +458,17 @@ def main():
                     )
                     
                     # Convert prediction to int32 for NIfTI compatibility
-                    prediction = prediction.astype(np.int32)
+                    prediction = prediction.astype(
+                        np.int32
+                    )
                     
-                    elapsed_time = time.time() - start_time
+                    elapsed_time = (
+                        time.time() - start_time
+                    )
                 
                 st.success(
-                    f"Prediction completed in {elapsed_time:.2f} seconds"
+                    f"Prediction completed in "
+                    f"{elapsed_time:.2f} seconds"
                 )
                 
                 # Visualize results using original size data
@@ -340,8 +480,13 @@ def main():
                 
                 st.pyplot(fig)
                 
+                # Close matplotlib figure
+                plt.close(fig)
+                
                 # Provide download option for prediction
-                st.subheader("Download Prediction")
+                st.subheader(
+                    "Download Prediction"
+                )
                 
                 # Create a temporary NIfTI file for download
                 with tempfile.NamedTemporaryFile(
@@ -362,11 +507,17 @@ def main():
                     )
                     
                     # Read back the file data
-                    with open(tmp_file.name, 'rb') as f:
+                    with open(
+                        tmp_file.name,
+                        'rb'
+                    ) as f:
+                        
                         pred_data = f.read()
                     
                     # Clean up
-                    os.unlink(tmp_file.name)
+                    os.unlink(
+                        tmp_file.name
+                    )
                 
                 st.download_button(
                     label="Download Segmentation (NIfTI)",
@@ -377,7 +528,8 @@ def main():
     
     elif uploaded_files and len(uploaded_files) < 4:
         st.warning(
-            "Please upload all four modalities (T1n, T1c, T2f, T2w)"
+            "Please upload all four modalities "
+            "(T1n, T1c, T2f, T2w)"
         )
 
 
